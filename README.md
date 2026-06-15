@@ -32,3 +32,10 @@ cmsRun SUEPTron/HLTSCOUTNANOProducer/python/suepton_cfg.py inputFile=/store/data
 
 cmsRun SUEPTron/HLTSCOUTNANOProducer/python/suepton_cfg.py inputFile=/store/data/Run2024D/ScoutingPFMonitor/MINIAOD/PromptReco-v1/000/380/306/00000/f2b70a80-5047-4b29-8d5b-18f83d927320.root outputFile=out.root isData=True year=2024 savePFCands=True saveTracks=True numEvents=10
 ```
+
+## Example Output
+
+<p>
+  <img src="plots/SuepEvent_Ht.png" width="48%"/>
+  <img src="plots/SuepEvent_sphericitySUEP.png" width="48%"/>
+</p>
