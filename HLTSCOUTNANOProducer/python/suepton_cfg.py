@@ -76,7 +76,7 @@ process.recHitProducer = cms.EDProducer('RecHitProducer',
 )
 
 # ── SUEP producer ─────────────────────────────────────────────────────────────
-process.suepProducer = cms.EDProducer('SUEPProducer',
+process.SUEPTable = cms.EDProducer('SUEPProducer',
     ScoutingParticle = cms.InputTag("hltScoutingPFPacker"),
     ScoutingElectron = cms.InputTag("hltScoutingEgammaPacker"),
     ScoutingMuon     = cms.InputTag("hltScoutingMuonPackerVtx"),
@@ -90,7 +90,7 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
     compressionAlgorithm = cms.untracked.string("LZMA"),
     outputCommands       = cms.untracked.vstring(
         ["drop *",
-         "keep nanoaodFlatTable_*_*_*",
+         "keep nanoaodFlatTable_SUEPTable_*_*",
          "keep edmTriggerResults_*_*_*",
         ]
         + (["keep *_scoutingPFCandidateTable_*_*"] if params.savePFCands else [])
@@ -99,9 +99,9 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
 )
 
 # ── Paths and schedule ────────────────────────────────────────────────────────
-process.p = cms.Path(process.scoutingNanoSequence + process.suepProducer)
+process.p = cms.Path(process.scoutingNanoSequence + process.SUEPTable)
 if params.saveRechits:
-    process.p = cms.Path(process.scoutingNanoSequence + process.recHitProducer + process.suepProducer)
+    process.p = cms.Path(process.scoutingNanoSequence + process.recHitProducer + process.SUEPTable)
 
 process.endk = cms.EndPath(process.NANOAODoutput)
 
