@@ -1,6 +1,7 @@
 import FWCore.ParameterSet.Config as cms
 from FWCore.ParameterSet.VarParsing import VarParsing
 from Configuration.Eras.Era_Run3_2024_cff import Run3_2024
+from Configuration.Eras.Era_Run3_2025_cff import Run3_2025
 
 params = VarParsing()
 params.register('inputFile',        'file:',         VarParsing.multiplicity.singleton, VarParsing.varType.string, 'Input file')
@@ -10,12 +11,21 @@ params.register('saveTracks',  False, VarParsing.multiplicity.singleton, VarPars
 params.register('saveRechits', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include Rechits (2025E onwards)')
 params.register('savePFCands', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
 params.register('saveJets', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
+params.register('year', 2024, VarParsing.multiplicity.singleton, VarParsing.varType.int, 'Year')
+params.register('isData', True, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Specify whether MC or data.')
+
 params.parseArguments()
 
-process = cms.Process('SUEPTron', Run3_2024)
+
+if params.year == 2024:
+    era = Run3_2024
+elif params.year == 2025:
+    era = Run3_2025
+
+process = cms.Process('SUEPTron', era)
 
 process.load("FWCore.MessageService.MessageLogger_cfi")
-process.MessageLogger.cerr.FwkReport.reportEvery = 100
+process.MessageLogger.cerr.FwkReport.reportEvery = 1
 
 process.options = cms.untracked.PSet(wantSummary=cms.untracked.bool(True))
 process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(params.numEvents))
@@ -30,20 +40,33 @@ process.load('Configuration.StandardSequences.Services_cff')
 # Geometry + B-field (needed by jet reclustering producers)
 process.load('Configuration.StandardSequences.GeometryRecoDB_cff')
 process.load('Configuration.StandardSequences.MagneticField_cff')
-
+process.load('PhysicsTools.NanoAOD.nanogen_cff')
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
 from Configuration.AlCa.GlobalTag import GlobalTag
+
 # For 2024 data use e.g. '140X_dataRun3_HLT_v3'; this default is for 2025 MC
-process.GlobalTag = GlobalTag(process.GlobalTag, '142X_mcRun3_2025_realistic_v7', '')
+if params.isData:
+    if params.year == 2024:
+        process.GlobalTag = GlobalTag(process.GlobalTag, '140X_dataRun3_v14', '')
+    elif params.year == 2025:
+        process.GlobalTag = GlobalTag(process.GlobalTag, '140X_dataRun3_v14', '')
+else:
+    if params.year == 2024:
+        process.GlobalTag = GlobalTag(process.GlobalTag, '140X_mcRun3_2024_realistic_v10', '')
+    elif params.year == 2025:
+        process.GlobalTag = GlobalTag(process.GlobalTag, '142X_mcRun3_2025_realistic_v7', '')
 
 # ── Standard CMS Run3 scouting NanoAOD sequences ──────────────────────────────
-# Provides scoutingNanoSequence: ScoutingMuon, ScoutingElectron, ScoutingPhoton,
-# ScoutingPrimaryVertex, ScoutingPFJet, ScoutingMET, ScoutingRho,
-# ScoutingPFJetRecluster (AK4+ParticleNet), ScoutingFatPFJetRecluster (AK8+ParticleNet+GlobalParT)
-# Era Run3_2024 automatically activates run3_scouting_2024 modifier:
-#   - uses ScoutingMuonVtx + ScoutingMuonNoVtx instead of ScoutingMuon
-#   - uses best-track selection for ScoutingElectron
+# Era Run3_2024 activates run3_scouting_2024: ScoutingMuonVtx/NoVtx, electron best-track
 process.load('PhysicsTools.NanoAOD.custom_run3scouting_cff')
+
+# ── MC-only: gen-level sequence and gen-jet matching for reclustered jets ──────
+if not params.isData:
+    process.load('SimGeneral.MixingModule.mixNoPU_cfi')
+    from PhysicsTools.NanoAOD.nanogen_cff import customizeNanoGENFromMini
+    process = customizeNanoGENFromMini(process)
+    from PhysicsTools.NanoAOD.custom_run3scouting_cff import scoutingNanoTaskMC
+    process.scoutingNanoSequence.associate(scoutingNanoTaskMC)
 
 # ── RecHit producer ───────────────────────────────────────────────────────────
 process.recHitProducer = cms.EDProducer('RecHitProducer',
@@ -67,7 +90,7 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
     compressionAlgorithm = cms.untracked.string("LZMA"),
     outputCommands       = cms.untracked.vstring(
         ["drop *",
-         "keep nanoaodFlatTable_SUEPTable_*_*",
+         "keep nanoaodFlatTable_*_*_*",
          "keep edmTriggerResults_*_*_*",
         ]
         + (["keep *_scoutingPFCandidateTable_*_*"] if params.savePFCands else [])
@@ -75,17 +98,22 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
     ),
 )
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
-# scoutingNanoSequence runs all standard scouting tables
-# suepProducer adds SuepEvent (+ optional Track/ScoutingPFCandidate)
+# ── Paths and schedule ────────────────────────────────────────────────────────
 process.p = cms.Path(process.scoutingNanoSequence + process.suepProducer)
 if params.saveRechits:
     process.p = cms.Path(process.scoutingNanoSequence + process.recHitProducer + process.suepProducer)
 
 process.endk = cms.EndPath(process.NANOAODoutput)
 
-# Automatic addition of the customisation function from PhysicsTools.NanoAOD.custom_run3scouting_cff
-from PhysicsTools.NanoAOD.custom_run3scouting_cff import addScoutingPFCandidate,customiseScoutingNano 
+# schedule must be defined before calling customisers that extend it
+if not params.isData:
+    process.nanoAOD_gen_step = cms.Path(process.nanogenSequence)
+    process.schedule = cms.Schedule(process.nanoAOD_gen_step, process.p, process.endk)
+else:
+    process.schedule = cms.Schedule(process.p, process.endk)
 
-#call to customisation function addScoutingPFCandidate imported from PhysicsTools.NanoAOD.custom_run3scouting_cff
+# ── Scouting customisations ───────────────────────────────────────────────────
+from PhysicsTools.NanoAOD.custom_run3scouting_cff import addScoutingPFCandidate, customiseScoutingNano, customiseScoutingNanoFromMini
 process = addScoutingPFCandidate(process)
+process = customiseScoutingNano(process)        # adds L1 trigger step; on MC adds gen-jet matching tasks
+process = customiseScoutingNanoFromMini(process) # replaces gtStage2DigisScouting for MiniAOD/PFMonitor inputs
