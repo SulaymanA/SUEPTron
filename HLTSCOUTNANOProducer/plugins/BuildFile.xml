@@ -1,0 +1,12 @@
+<use name="SUEPTron/HLTSCOUTNANOProducer"/>
+<use name="FWCore/Framework"/>
+<use name="FWCore/ParameterSet"/>
+<use name="FWCore/PluginManager"/>
+<use name="FWCore/Common"/>
+<use name="DataFormats/Common"/>
+<use name="DataFormats/EcalDetId"/>
+<use name="DataFormats/HcalDetId"/>
+<use name="DataFormats/Scouting"/>
+<use name="DataFormats/NanoAOD"/>
+<use name="fastjet"/>
+<flags EDM_PLUGIN="1"/>
