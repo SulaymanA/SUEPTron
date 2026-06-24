@@ -13,8 +13,10 @@ params.register('savePFCands', False, VarParsing.multiplicity.singleton, VarPars
 params.register('saveJetsRecluster', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
 params.register('saveMuonVtx', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
 params.register('saveJets', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
-params.register('year', 2024, VarParsing.multiplicity.singleton, VarParsing.varType.int, 'Year')
-params.register('isData', True, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Specify whether MC or data.')
+params.register('year',       2024, VarParsing.multiplicity.singleton, VarParsing.varType.int,    'Year')
+params.register('isData',     True, VarParsing.multiplicity.singleton, VarParsing.varType.bool,   'Specify whether MC or data.')
+params.register('fromMini',   True, VarParsing.multiplicity.singleton, VarParsing.varType.bool,   'Input is ScoutingPFMonitor/MiniAOD (True) or ScoutingPFRun3 (False)')
+params.register('goldenJSON',  '',  VarParsing.multiplicity.singleton, VarParsing.varType.string, 'Path to Golden JSON for lumi masking (data only)')
 
 params.parseArguments()
 
@@ -36,8 +38,12 @@ process.options = cms.untracked.PSet(
 process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(params.numEvents))
 
 process.source = cms.Source("PoolSource",
-    fileNames=cms.untracked.vstring(params.inputFile)
+    fileNames=cms.untracked.vstring(params.inputFile),
 )
+
+if params.isData and params.goldenJSON:
+    import FWCore.PythonUtilities.LumiList as LumiList
+    process.source.lumisToProcess = LumiList.LumiList(filename=params.goldenJSON).getVLuminosityBlockRange()
 
 # ── Infrastructure ────────────────────────────────────────────────────────────
 # ONNX runtime service (needed by ParticleNet jet taggers)
@@ -122,5 +128,9 @@ else:
 # ── Scouting customisations ───────────────────────────────────────────────────
 from PhysicsTools.NanoAOD.custom_run3scouting_cff import addScoutingPFCandidate, customiseScoutingNano, customiseScoutingNanoFromMini
 process = addScoutingPFCandidate(process)
-process = customiseScoutingNano(process)        # adds L1 trigger step; on MC adds gen-jet matching tasks
-process = customiseScoutingNanoFromMini(process) # replaces gtStage2DigisScouting for MiniAOD/PFMonitor inputs
+if params.fromMini:
+    # ScoutingPFMonitor/MiniAOD: gtStage2Digis exists → L1 trigger tables available
+    process = customiseScoutingNano(process)
+    process = customiseScoutingNanoFromMini(process)
+# ScoutingPFRun3: no gtStage2Digis or hltFEDSelectorL1 in MINIAOD → skip L1 trigger tables
+# HLT decisions are still saved via "keep edmTriggerResults_*_*_*"
