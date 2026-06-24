@@ -10,6 +10,8 @@ params.register('numEvents',        -1,              VarParsing.multiplicity.sin
 params.register('saveTracks',  False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include Track table')
 params.register('saveRechits', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include Rechits (2025E onwards)')
 params.register('savePFCands', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
+params.register('saveJetsRecluster', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
+params.register('saveMuonVtx', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
 params.register('saveJets', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
 params.register('year', 2024, VarParsing.multiplicity.singleton, VarParsing.varType.int, 'Year')
 params.register('isData', True, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Specify whether MC or data.')
@@ -97,7 +99,9 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
          "keep edmTriggerResults_*_*_*",
         ]
         + (["keep *_scoutingPFCandidateTable_*_*"] if params.savePFCands else [])
-        + (["keep *_scoutingPFJetReclusterTable_*_*", "keep *_scoutingRhoTable_*_*"] if params.saveJets else [])
+        + (["keep *_scoutingMuonVtxTable_*_*"] if params.saveMuonVtx else [])
+        + (["keep *_scoutingPFJetTable_*_*", "keep *_scoutingRhoTable_*_*"] if params.saveJets else [])
+        + (["keep *_scoutingPFJetReclusterTable_*_*", "keep *_scoutingRhoTable_*_*"] if params.saveJetsRecluster else [])
     ),
 )
 
