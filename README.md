@@ -28,9 +28,9 @@ scram b
 This repo is designed for producing Scouting NanoAOD ntuples and currently only supports 2024/2025 data or MC. There are various option to customise the ntuples such as including rechits (2025 data only), saving PFCandidates or saving only chraged tracks. Below are examples of compatible files:
 
 ```
-cmsRun SUEPTron/HLTSCOUTNANOProducer/python/suepton_cfg.py inputFile=/store/data/Run2024D/ScoutingPFMonitor/MINIAOD/PromptReco-v1/000/380/306/00000/f2b70a80-5047-4b29-8d5b-18f83d927320.root outputFile=out.root isData=True year=2024 numEvents=10
+cmsRun SUEPTron/HLTSCOUTNANOProducer/python/process.py inputFile=/store/data/Run2024D/ScoutingPFMonitor/MINIAOD/PromptReco-v1/000/380/306/00000/f2b70a80-5047-4b29-8d5b-18f83d927320.root outputFile=out.root isData=True year=2024 numEvents=10
 
-cmsRun SUEPTron/HLTSCOUTNANOProducer/python/suepton_cfg.py inputFile=/store/data/Run2024D/ScoutingPFMonitor/MINIAOD/PromptReco-v1/000/380/306/00000/f2b70a80-5047-4b29-8d5b-18f83d927320.root outputFile=out.root isData=True year=2024 savePFCands=True saveTracks=True numEvents=10
+cmsRun SUEPTron/HLTSCOUTNANOProducer/python/process.py inputFile=/store/data/Run2024D/ScoutingPFMonitor/MINIAOD/PromptReco-v1/000/380/306/00000/f2b70a80-5047-4b29-8d5b-18f83d927320.root outputFile=out.root isData=True year=2024 savePFCands=True saveTracks=True numEvents=10
 ```
 
 ## Example Output
