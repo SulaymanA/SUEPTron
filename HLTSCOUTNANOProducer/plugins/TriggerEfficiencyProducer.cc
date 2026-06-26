@@ -84,19 +84,14 @@ TriggerEfficiencyProducer::TriggerEfficiencyProducer(const edm::ParameterSet& ps
 float TriggerEfficiencyProducer::applyJECChain(
         float area, float eta, float phi, float rawPt, float rho) const {
     // L1FastJet: (jetArea, eta, phi, rawPt, rho) → scale
-    std::cout << "Initial Jet pT: " << rawPt << std::endl;
     float pt = rawPt * static_cast<float>(
         corrL1FastJet_->evaluate({(double)area, (double)eta, (double)phi, (double)rawPt, (double)rho}));
     // L2Relative: (eta, phi, l1Pt) → scale
-    std::cout << "After L1 Jet pT: " << pt << std::endl;
     pt *= static_cast<float>(
         corrL2Relative_->evaluate({(double)eta, (double)phi, (double)pt}));
     // L3Absolute: (eta, l2Pt) → scale
-    std::cout << "After L2 Jet pT: " << pt << std::endl;
     pt *= static_cast<float>(
         corrL3Absolute_->evaluate({(double)eta, (double)pt}));
-    std::cout << "After L3 Jet pT: " << pt << std::endl;
-    std::cout << "------------------------------" << std::endl;
     return pt;
 }
 
