@@ -9,4 +9,5 @@
 <use name="DataFormats/Scouting"/>
 <use name="DataFormats/NanoAOD"/>
 <use name="fastjet"/>
+<use name="correctionlib"/>
 <flags EDM_PLUGIN="1"/>

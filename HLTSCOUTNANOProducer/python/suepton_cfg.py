@@ -13,6 +13,10 @@ params.register('savePFCands', False, VarParsing.multiplicity.singleton, VarPars
 params.register('saveJetsRecluster', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
 params.register('saveMuonVtx', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
 params.register('saveJets', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
+params.register('saveTriggerTable', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include TriggerTable (denominator + Ht_corrected)')
+params.register('jecFile',    '',   VarParsing.multiplicity.singleton, VarParsing.varType.string, 'Path to JEC JSON file (required when saveTriggerTable=True and applyJEC=True)')
+params.register('jecTag',     'Winter24HLT_V1_MC', VarParsing.multiplicity.singleton, VarParsing.varType.string, 'JEC tag inside the JEC JSON file')
+params.register('applyJEC',   False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Apply HLT JEC corrections in TriggerTable producer')
 params.register('year',       2024, VarParsing.multiplicity.singleton, VarParsing.varType.int,    'Year')
 params.register('isData',     True, VarParsing.multiplicity.singleton, VarParsing.varType.bool,   'Specify whether MC or data.')
 params.register('fromMini',   True, VarParsing.multiplicity.singleton, VarParsing.varType.bool,   'Input is ScoutingPFMonitor/MiniAOD (True) or ScoutingPFRun3 (False)')
@@ -94,6 +98,21 @@ process.SUEPTable = cms.EDProducer('SUEPProducer',
     saveTracks = cms.bool(params.saveTracks),
 )
 
+# ── Trigger efficiency producer ────────────────────────────────────────────────
+# Produces TriggerTable: denominator (SingleMuon DST + tight muon) and
+# Ht_corrected (JEC-corrected jet HT after jetID + muon cleaning).
+# Enable with saveTriggerTable=True; set applyJEC=True + jecFile=<path> for JECs.
+process.TriggerTable = cms.EDProducer('TriggerEfficiencyProducer',
+    JetTag         = cms.InputTag("hltScoutingPFPacker"),
+    MuonTag        = cms.InputTag("hltScoutingMuonPackerVtx"),
+    RhoTag         = cms.InputTag("hltFixedGridRhoFastjetAll"),
+    TriggerResults = cms.InputTag("TriggerResults", "", "HLT"),
+    SingleMuonPath = cms.string("DST_PFScouting_SingleMuon"),
+    applyJEC       = cms.bool(params.applyJEC),
+    JECFile        = cms.string(params.jecFile),
+    JECTag         = cms.string(params.jecTag),
+)
+
 # ── NanoAOD output ────────────────────────────────────────────────────────────
 process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
     fileName             = cms.untracked.string(params.outputFile),
@@ -104,6 +123,7 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
          "keep nanoaodFlatTable_SUEPTable_*_*",
          "keep edmTriggerResults_*_*_*",
         ]
+        + (["keep nanoaodFlatTable_TriggerTable_*_*"] if params.saveTriggerTable else [])
         + (["keep *_scoutingPFCandidateTable_*_*"] if params.savePFCands else [])
         + (["keep *_scoutingMuonVtxTable_*_*"] if params.saveMuonVtx else [])
         + (["keep *_scoutingPFJetTable_*_*", "keep *_scoutingRhoTable_*_*"] if params.saveJets else [])
@@ -112,9 +132,14 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
 )
 
 # ── Paths and schedule ────────────────────────────────────────────────────────
-process.p = cms.Path(process.scoutingNanoSequence + process.SUEPTable)
+_suepPath = process.scoutingNanoSequence + process.SUEPTable
+if params.saveTriggerTable:
+    _suepPath += process.TriggerTable
 if params.saveRechits:
-    process.p = cms.Path(process.scoutingNanoSequence + process.recHitProducer + process.SUEPTable)
+    _suepPath = process.scoutingNanoSequence + process.recHitProducer + process.SUEPTable
+    if params.saveTriggerTable:
+        _suepPath += process.TriggerTable
+process.p = cms.Path(_suepPath)
 
 process.endk = cms.EndPath(process.NANOAODoutput)
 
