@@ -84,14 +84,20 @@ TriggerEfficiencyProducer::TriggerEfficiencyProducer(const edm::ParameterSet& ps
 float TriggerEfficiencyProducer::applyJECChain(
         float area, float eta, float phi, float rawPt, float rho) const {
     // L1FastJet: (jetArea, eta, phi, rawPt, rho) → scale
+    // std::cout << "rawPT: " << rawPt << std::endl; 
     float pt = rawPt * static_cast<float>(
         corrL1FastJet_->evaluate({(double)area, (double)eta, (double)phi, (double)rawPt, (double)rho}));
+        // std::cout << "Rho: " << rho << std::endl;
+        // std::cout << "pt: " << pt << std::endl;
     // L2Relative: (eta, phi, l1Pt) → scale
     pt *= static_cast<float>(
         corrL2Relative_->evaluate({(double)eta, (double)phi, (double)pt}));
+        // std::cout << "pt: " << pt << std::endl;
     // L3Absolute: (eta, l2Pt) → scale
     pt *= static_cast<float>(
         corrL3Absolute_->evaluate({(double)eta, (double)pt}));
+        // std::cout << "pt: " << pt << std::endl;
+        // std::cout << "---------------------------------" << std::endl;
     return pt;
 }
 
@@ -216,6 +222,8 @@ void TriggerEfficiencyProducer::produce(
         "Reference trigger (DST_PFScouting_SingleMuon) fired AND >=1 tight scouting muon");
     table->addColumnValue<float>("Ht_corrected", htCorrected,
         "JEC-corrected HT from scouting jets after jetID and muon cleaning (GeV)");
+    table->addColumnValue<float>("rho", rho,
+        "Event rho from hltScoutingPFPacker::rho used for L1FastJet JEC (0 if not found)");
     iEvent.put(std::move(table), "TriggerTable");
 }
 
@@ -223,7 +231,7 @@ void TriggerEfficiencyProducer::fillDescriptions(edm::ConfigurationDescriptions&
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("JetTag",         edm::InputTag("hltScoutingPFPacker"));
     desc.add<edm::InputTag>("MuonTag",        edm::InputTag("hltScoutingMuonPackerVtx"));
-    desc.add<edm::InputTag>("RhoTag",         edm::InputTag("hltFixedGridRhoFastjetAll"));
+    desc.add<edm::InputTag>("RhoTag",         edm::InputTag("hltScoutingPFPacker", "rho"));
     desc.add<edm::InputTag>("TriggerResults", edm::InputTag("TriggerResults", "", "HLT"));
     desc.add<std::string>  ("SingleMuonPath", "DST_PFScouting_SingleMuon");
     desc.add<bool>         ("applyJEC",        false);
