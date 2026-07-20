@@ -14,6 +14,8 @@ params.register('saveJetsRecluster', False, VarParsing.multiplicity.singleton, V
 params.register('saveMuonVtx', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
 params.register('saveJets', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include PFCandidates (2025E onwards)')
 params.register('saveTriggerTable', False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Include TriggerTable (denominator + Ht_corrected)')
+params.register('saveMLTable',      False, VarParsing.multiplicity.singleton, VarParsing.varType.bool,   'Include MLTable (ABCDDiScOTEC var1/var2)')
+params.register('mlModel',          '',    VarParsing.multiplicity.singleton, VarParsing.varType.string, 'Path to ABCDDiScOTEC ONNX model file')
 params.register('jecFile',    '',   VarParsing.multiplicity.singleton, VarParsing.varType.string, 'Path to JEC JSON file (required when saveTriggerTable=True and applyJEC=True)')
 params.register('jecTag',     'Winter24HLT_V1_MC', VarParsing.multiplicity.singleton, VarParsing.varType.string, 'JEC tag inside the JEC JSON file')
 params.register('applyJEC',   False, VarParsing.multiplicity.singleton, VarParsing.varType.bool, 'Apply HLT JEC corrections in TriggerTable producer')
@@ -82,6 +84,8 @@ if not params.isData:
     process = customizeNanoGENFromMini(process)
     from PhysicsTools.NanoAOD.custom_run3scouting_cff import scoutingNanoTaskMC
     process.scoutingNanoSequence.associate(scoutingNanoTaskMC)
+    from PhysicsTools.NanoAOD.globals_cff import puTable
+    process.puTable = puTable
 
 # ── RecHit producer ───────────────────────────────────────────────────────────
 process.recHitProducer = cms.EDProducer('RecHitProducer',
@@ -113,6 +117,16 @@ process.TriggerTable = cms.EDProducer('TriggerEfficiencyProducer',
     JECTag         = cms.string(params.jecTag),
 )
 
+# ── ML inference producer (ABCDDiScOTEC) ──────────────────────────────────────
+# Produces MLTable: var1, var2 from the GNN model.
+# Enable with saveMLTable=True; provide mlModel=<path_to_onnx_file>.
+process.MLTable = cms.EDProducer('MLProducer',
+    ParticleTag   = cms.InputTag("hltScoutingPFPacker"),
+    ModelPath     = cms.string(params.mlModel),
+    k             = cms.int32(10),
+    nParticlesMax = cms.int32(1000),
+)
+
 # ── NanoAOD output ────────────────────────────────────────────────────────────
 process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
     fileName             = cms.untracked.string(params.outputFile),
@@ -123,7 +137,10 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
          "keep nanoaodFlatTable_SUEPTable_*_*",
          "keep edmTriggerResults_*_*_*",
         ]
+        + (["keep nanoaodFlatTable_puTable_*_*",
+             "keep nanoaodFlatTable_genWeightsTable_*_*"] if not params.isData else [])
         + (["keep nanoaodFlatTable_TriggerTable_*_*"] if params.saveTriggerTable else [])
+        + (["keep nanoaodFlatTable_MLTable_*_*"]       if params.saveMLTable      else [])
         + (["keep *_scoutingPFCandidateTable_*_*"] if params.savePFCands else [])
         + (["keep *_scoutingMuonVtxTable_*_*"] if params.saveMuonVtx else [])
         + (["keep *_scoutingPFJetTable_*_*", "keep *_scoutingRhoTable_*_*"] if params.saveJets else [])
@@ -133,12 +150,18 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
 
 # ── Paths and schedule ────────────────────────────────────────────────────────
 _suepPath = process.scoutingNanoSequence + process.SUEPTable
+if not params.isData:
+    _suepPath += process.puTable
 if params.saveTriggerTable:
     _suepPath += process.TriggerTable
+if params.saveMLTable:
+    _suepPath += process.MLTable
 if params.saveRechits:
     _suepPath = process.scoutingNanoSequence + process.recHitProducer + process.SUEPTable
     if params.saveTriggerTable:
         _suepPath += process.TriggerTable
+    if params.saveMLTable:
+        _suepPath += process.MLTable
 process.p = cms.Path(_suepPath)
 
 process.endk = cms.EndPath(process.NANOAODoutput)

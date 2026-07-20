@@ -10,4 +10,5 @@
 <use name="DataFormats/NanoAOD"/>
 <use name="fastjet"/>
 <use name="correctionlib"/>
+<use name="PhysicsTools/ONNXRuntime"/>
 <flags EDM_PLUGIN="1"/>
