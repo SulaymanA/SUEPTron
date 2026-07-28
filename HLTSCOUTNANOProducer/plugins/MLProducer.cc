@@ -255,18 +255,18 @@ void MLProducer::produce(
            "log(trkPt)", "trkEta", "trkPhi", "dxy", "dz",
            "quality", "isPion", "isNeutHad", "isPhoton", "isMuon", "isElec"
         };
-        std::cout << "[MLProducer] nKeep=" << nKeep << "\n";
-        for (int i = 0; i < nKeep; ++i) {
-           const float* row = features.data() + i * 16;
-           bool bad = false;
-           for (int f = 0; f < 16; ++f)
-               if (std::isnan(row[f]) || std::isinf(row[f])) { bad = true; break; }
-           std::cout << "  p[" << i << "] pdg=" << (*particles)[i].pdgId();
-           for (int f = 0; f < 16; ++f)
-               std::cout << "  " << featNames[f] << "=" << row[f];
-           if (bad) std::cout << "  <<< NaN/inf";
-           std::cout << "\n";
-        }
+        // std::cout << "[MLProducer] nKeep=" << nKeep << "\n";
+        // for (int i = 0; i < nKeep; ++i) {
+        //    const float* row = features.data() + i * 16;
+        //    bool bad = false;
+        //    for (int f = 0; f < 16; ++f)
+        //        if (std::isnan(row[f]) || std::isinf(row[f])) { bad = true; break; }
+        //    std::cout << "  p[" << i << "] pdg=" << (*particles)[i].pdgId();
+        //    for (int f = 0; f < 16; ++f)
+        //        std::cout << "  " << featNames[f] << "=" << row[f];
+        //    if (bad) std::cout << "  <<< NaN/inf";
+        //    std::cout << "\n";
+        // }
         //─────────────────────────────────────────────────────────────────────
 
         // 2. KNN edge index (2, N*k)
@@ -274,8 +274,8 @@ void MLProducer::produce(
         int nEdges = static_cast<int>(edgeIndex.size()) / 2;
 
         // 3. ONNX tensors
-        std::array<int64_t, 2> featShape  = {static_cast<int64_t>(nKeep), 16};
-        std::array<int64_t, 2> edgeShape  = {2, static_cast<int64_t>(nEdges)};
+        std::array<int64_t, 2> featShape  = {{static_cast<int64_t>(nKeep), 16}};
+        std::array<int64_t, 2> edgeShape  = {{2, static_cast<int64_t>(nEdges)}};
 
         std::vector<Ort::Value> inputTensors;
         inputTensors.push_back(Ort::Value::CreateTensor<float>(
