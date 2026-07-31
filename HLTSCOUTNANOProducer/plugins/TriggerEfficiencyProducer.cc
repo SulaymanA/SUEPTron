@@ -70,6 +70,7 @@ TriggerEfficiencyProducer::TriggerEfficiencyProducer(const edm::ParameterSet& ps
       applyJEC_        (ps.getParameter<bool>("applyJEC"))
 {
     produces<nanoaod::FlatTable>("TriggerTable");
+    produces<float>("htCorrected");
 
     if (applyJEC_) {
         const std::string jecFile = ps.getParameter<std::string>("JECFile");
@@ -215,7 +216,6 @@ void TriggerEfficiencyProducer::produce(
                 htCorrected += cleanedPt;
         }
     }
-
     // ── output ────────────────────────────────────────────────────────────────
     auto table = std::make_unique<nanoaod::FlatTable>(1, "TriggerTable", true);
     table->addColumnValue<int>  ("denominator",  static_cast<int>(denominator),
@@ -225,6 +225,7 @@ void TriggerEfficiencyProducer::produce(
     table->addColumnValue<float>("rho", rho,
         "Event rho from hltScoutingPFPacker::rho used for L1FastJet JEC (0 if not found)");
     iEvent.put(std::move(table), "TriggerTable");
+    iEvent.put(std::make_unique<float>(htCorrected), "htCorrected");
 }
 
 void TriggerEfficiencyProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {

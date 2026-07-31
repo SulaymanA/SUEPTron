@@ -42,7 +42,6 @@
 #include "onnxruntime/onnxruntime_cxx_api.h"
 
 #include <algorithm>
-#include <iostream>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -111,8 +110,10 @@ public:
 
 private:
     const edm::EDGetTokenT<Run3ScoutingParticleCollection> particleToken_;
+    const edm::EDGetTokenT<float>                          htToken_;
     const int k_;
     const int nParticlesMax_;
+    const float htMin_;
 
     // ONNX runtime objects — thread-safe for Run() after construction
     const Ort::Env env_;
@@ -132,8 +133,10 @@ private:
 
 MLProducer::MLProducer(const edm::ParameterSet& ps)
     : particleToken_(consumes(ps.getParameter<edm::InputTag>("ParticleTag"))),
+      htToken_     (mayConsume<float>(ps.getParameter<edm::InputTag>("HtTag"))),
       k_           (ps.getParameter<int>("k")),
-      nParticlesMax_(ps.getParameter<int>("nParticlesMax")),
+      nParticlesMax_(ps.getParameter<int>("nParticlesMax")),  // must match training (1000)
+      htMin_       (ps.getParameter<double>("htMin")),
       env_         (ORT_LOGGING_LEVEL_WARNING, "MLProducer"),
       memInfo_     (Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault))
 {
@@ -142,7 +145,8 @@ MLProducer::MLProducer(const edm::ParameterSet& ps)
     const std::string modelPath = ps.getParameter<std::string>("ModelPath");
     Ort::SessionOptions opts;
     opts.SetIntraOpNumThreads(1);
-    opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+    opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    opts.EnableCpuMemArena();
     session_ = std::make_unique<Ort::Session>(env_, modelPath.c_str(), opts);
 }
 
@@ -166,8 +170,6 @@ std::vector<float> MLProducer::extractFeatures(
         float trkPt  = nanoQuantize(rel ? p.trk_pt()  + p.pt()  : p.trk_pt(),  6);
         float trkEta = nanoQuantize(rel ? p.trk_eta() + p.eta() : p.trk_eta(), 6);
         float trkPhi = nanoQuantize(rel ? p.trk_phi() + p.phi() : p.trk_phi(), 6);
-        //std::cout << "Quality: " << static_cast<int>(p.quality()) << std::endl;
-        //std::cout << "Eta: " << p.eta() << std::endl;
 
         float* row = features.data() + i * 16;
         row[ 0] = std::log(p.pt());
@@ -202,13 +204,14 @@ std::vector<int64_t> MLProducer::buildKNNGraph(
     int64_t* row1 = edgeIndex.data() + nEdges;   // neighbour   (source)
 
     int edgePos = 0;
+    std::vector<std::pair<float,int>> dists;
+    dists.reserve(nKeep - 1);
     for (int i = 0; i < nKeep; ++i) {
         float etaI = particles[i].eta();
         float phiI = particles[i].phi();
 
         // collect (ΔR², j) for all j≠i
-        std::vector<std::pair<float,int>> dists;
-        dists.reserve(nKeep - 1);
+        dists.clear();
         for (int j = 0; j < nKeep; ++j) {
             if (j == i) continue;
             float deta = etaI - particles[j].eta();
@@ -219,7 +222,7 @@ std::vector<int64_t> MLProducer::buildKNNGraph(
         }
 
         int nNbr = std::min(k, static_cast<int>(dists.size()));
-        std::partial_sort(dists.begin(), dists.begin() + nNbr, dists.end());
+        std::nth_element(dists.begin(), dists.begin() + nNbr, dists.end());
 
         for (int n = 0; n < nNbr; ++n) {
             row0[edgePos] = static_cast<int64_t>(i);
@@ -239,43 +242,21 @@ void MLProducer::produce(
         edm::StreamID, edm::Event& iEvent, const edm::EventSetup&) const {
 
     edm::Handle<Run3ScoutingParticleCollection> particles;
+    edm::Handle<float>                          htH;
     iEvent.getByToken(particleToken_, particles);
+    iEvent.getByToken(htToken_,       htH);
 
     float var1 = -1.f, var2 = -1.f;
-
-    if (particles.isValid() && !particles->empty()) {
+    const float htCorrected = (htH.isValid()) ? *htH : 0.f;
+    if (particles.isValid() && !particles->empty() && htCorrected >= htMin_) {
         int nKeep = std::min(static_cast<int>(particles->size()), nParticlesMax_);
 
-        // 1. feature matrix (N, 16)
-        std::vector<float> features = extractFeatures(*particles, nKeep);
-
-        //── debug: dump feature matrix and flag NaN/inf ───────────────────────
-        static const char* featNames[16] = {
-           "log(pt)", "eta", "phi", "mass", "charge",
-           "log(trkPt)", "trkEta", "trkPhi", "dxy", "dz",
-           "quality", "isPion", "isNeutHad", "isPhoton", "isMuon", "isElec"
-        };
-        // std::cout << "[MLProducer] nKeep=" << nKeep << "\n";
-        // for (int i = 0; i < nKeep; ++i) {
-        //    const float* row = features.data() + i * 16;
-        //    bool bad = false;
-        //    for (int f = 0; f < 16; ++f)
-        //        if (std::isnan(row[f]) || std::isinf(row[f])) { bad = true; break; }
-        //    std::cout << "  p[" << i << "] pdg=" << (*particles)[i].pdgId();
-        //    for (int f = 0; f < 16; ++f)
-        //        std::cout << "  " << featNames[f] << "=" << row[f];
-        //    if (bad) std::cout << "  <<< NaN/inf";
-        //    std::cout << "\n";
-        // }
-        //─────────────────────────────────────────────────────────────────────
-
-        // 2. KNN edge index (2, N*k)
+        std::vector<float>   features  = extractFeatures(*particles, nKeep);
         std::vector<int64_t> edgeIndex = buildKNNGraph(*particles, nKeep, k_);
         int nEdges = static_cast<int>(edgeIndex.size()) / 2;
 
-        // 3. ONNX tensors
-        std::array<int64_t, 2> featShape  = {{static_cast<int64_t>(nKeep), 16}};
-        std::array<int64_t, 2> edgeShape  = {{2, static_cast<int64_t>(nEdges)}};
+        std::array<int64_t, 2> featShape = {{static_cast<int64_t>(nKeep), 16}};
+        std::array<int64_t, 2> edgeShape = {{2, static_cast<int64_t>(nEdges)}};
 
         std::vector<Ort::Value> inputTensors;
         inputTensors.push_back(Ort::Value::CreateTensor<float>(
@@ -285,7 +266,6 @@ void MLProducer::produce(
             memInfo_, edgeIndex.data(), edgeIndex.size(),
             edgeShape.data(), edgeShape.size()));
 
-        // 4. run inference
         const char* inputNames[]  = {"pf_features", "edge_index"};
         const char* outputNames[] = {"scores"};
         auto outputTensors = session_->Run(
@@ -311,9 +291,11 @@ void MLProducer::produce(
 void MLProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
     edm::ParameterSetDescription desc;
     desc.add<edm::InputTag>("ParticleTag", edm::InputTag("hltScoutingPFPacker"));
+    desc.add<edm::InputTag>("HtTag",      edm::InputTag("TriggerTable", "htCorrected"));
     desc.add<std::string>("ModelPath",    "");
-    desc.add<int>("k",              10);
-    desc.add<int>("nParticlesMax",  1000);
+    desc.add<int>   ("k",             10);
+    desc.add<int>   ("nParticlesMax", 1000);
+    desc.add<double>("htMin",         0.0);
     descriptions.addWithDefaultLabel(desc);
 }
 

@@ -122,9 +122,11 @@ process.TriggerTable = cms.EDProducer('TriggerEfficiencyProducer',
 # Enable with saveMLTable=True; provide mlModel=<path_to_onnx_file>.
 process.MLTable = cms.EDProducer('MLProducer',
     ParticleTag   = cms.InputTag("hltScoutingPFPacker"),
+    HtTag         = cms.InputTag("TriggerTable", "htCorrected"),
     ModelPath     = cms.string(params.mlModel),
     k             = cms.int32(10),
     nParticlesMax = cms.int32(1000),
+    htMin         = cms.double(500.0),
 )
 
 # ── NanoAOD output ────────────────────────────────────────────────────────────
@@ -152,13 +154,13 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
 _suepPath = process.scoutingNanoSequence + process.SUEPTable
 if not params.isData:
     _suepPath += process.puTable
-if params.saveTriggerTable:
+if params.saveTriggerTable or params.saveMLTable:
     _suepPath += process.TriggerTable
 if params.saveMLTable:
     _suepPath += process.MLTable
 if params.saveRechits:
     _suepPath = process.scoutingNanoSequence + process.recHitProducer + process.SUEPTable
-    if params.saveTriggerTable:
+    if params.saveTriggerTable or params.saveMLTable:
         _suepPath += process.TriggerTable
     if params.saveMLTable:
         _suepPath += process.MLTable
