@@ -140,7 +140,9 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
          "keep edmTriggerResults_*_*_*",
         ]
         + (["keep nanoaodFlatTable_puTable_*_*",
-             "keep nanoaodFlatTable_genWeightsTable_*_*"] if not params.isData else [])
+             "keep nanoaodFlatTable_genWeightsTable_*_*",
+             "keep nanoaodFlatTable_genTable_*_*",
+             "keep nanoaodMergeableCounterTable_*Table_*_*"] if not params.isData else [])
         + (["keep nanoaodFlatTable_TriggerTable_*_*"] if params.saveTriggerTable else [])
         + (["keep nanoaodFlatTable_MLTable_*_*"]       if params.saveMLTable      else [])
         + (["keep *_scoutingPFCandidateTable_*_*"] if params.savePFCands else [])
