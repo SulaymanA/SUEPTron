@@ -8,6 +8,7 @@
 <use name="DataFormats/HcalDetId"/>
 <use name="DataFormats/Scouting"/>
 <use name="DataFormats/NanoAOD"/>
+<use name="SimDataFormats/PileupSummaryInfo"/>
 <use name="fastjet"/>
 <use name="correctionlib"/>
 <use name="PhysicsTools/ONNXRuntime"/>

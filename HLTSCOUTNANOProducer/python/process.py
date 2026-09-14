@@ -87,6 +87,12 @@ if not params.isData:
     from PhysicsTools.NanoAOD.globals_cff import puTable
     process.puTable = puTable
 
+    # Full per-interaction pileup pt-hat list (puTable only keeps the maximum).
+    # Needed by the QCD pileup-overlap weight (QCDWeightCalc).
+    process.PileupPtHatTable = cms.EDProducer('PileupPtHatProducer',
+        src = cms.InputTag("slimmedAddPileupInfo"),
+    )
+
 # ── RecHit producer ───────────────────────────────────────────────────────────
 process.recHitProducer = cms.EDProducer('RecHitProducer',
     RecHitEE   = cms.InputTag("hltScoutingRecHitPacker", "EE",   "HLT"),
@@ -140,6 +146,7 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
          "keep edmTriggerResults_*_*_*",
         ]
         + (["keep nanoaodFlatTable_puTable_*_*",
+             "keep nanoaodFlatTable_PileupPtHatTable_*_*",
              "keep nanoaodFlatTable_genWeightsTable_*_*",
              "keep nanoaodFlatTable_genTable_*_*",
              "keep nanoaodMergeableCounterTable_*Table_*_*"] if not params.isData else [])
@@ -156,6 +163,7 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
 _suepPath = process.scoutingNanoSequence + process.SUEPTable
 if not params.isData:
     _suepPath += process.puTable
+    _suepPath += process.PileupPtHatTable
 if params.saveTriggerTable or params.saveMLTable:
     _suepPath += process.TriggerTable
 if params.saveMLTable:
