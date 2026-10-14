@@ -3,10 +3,19 @@
 // CMSSW EDProducer that runs the ABCDDiScOTEC GNN via ONNX Runtime and writes
 // the two discriminants (var1, var2) to a singleton FlatTable ("MLTable").
 //
-// ONNX model interface expected:
-//   Input  "pf_features"  float32  (N_particles, 16)
-//   Input  "edge_index"   int64    (2, N_particles * k)   [row0 = central, row1 = neighbour]
-//   Output "scores"       float32  (2,)                   [var1, var2]
+// Two ONNX model interfaces are supported, chosen from the model's input count:
+//
+//   (a) k-NN inside the model (export_onnx.py, SUEP/training) - 1 input:
+//         Input  "pf_features"  float32  (N_particles, 16)
+//         Output "scores"       float32  (2,)              [var1, var2]
+//       The model builds the k-NN graph itself (eta-phi Euclidean distance, no phi
+//       wrap, self excluded, TopK) exactly as in training, so no graph is built here.
+//       Requires N_particles >= k + 1.
+//
+//   (b) legacy - 2 inputs, graph built in C++ (buildKNNGraph):
+//         Input  "pf_features"  float32  (N_particles, 16)
+//         Input  "edge_index"   int64    (2, N_particles * k)   [row0 = central, row1 = neighbour]
+//         Output "scores"       float32  (2,)                   [var1, var2]
 //
 // The 16 PF features (must exactly match preprocess.py transform_chunk):
 //   0  log(pt)
@@ -30,10 +39,12 @@
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/global/EDProducer.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
+#include "FWCore/MessageLogger/interface/MessageLogger.h"
 #include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
 #include "FWCore/Utilities/interface/EDGetToken.h"
+#include "FWCore/Utilities/interface/Exception.h"
 #include "FWCore/Utilities/interface/InputTag.h"
 
 #include "DataFormats/NanoAOD/interface/FlatTable.h"
@@ -119,6 +130,7 @@ private:
     const Ort::Env env_;
     std::unique_ptr<Ort::Session> session_;
     Ort::MemoryInfo memInfo_;
+    bool knnInModel_ = false;   // true: 1-input model that builds its own k-NN graph
 
     // Feature extraction: returns flat (N, 16) float array
     std::vector<float> extractFeatures(
@@ -148,6 +160,16 @@ MLProducer::MLProducer(const edm::ParameterSet& ps)
     opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
     opts.EnableCpuMemArena();
     session_ = std::make_unique<Ort::Session>(env_, modelPath.c_str(), opts);
+
+    const size_t nInputs = session_->GetInputCount();
+    if (nInputs != 1 && nInputs != 2)
+        throw cms::Exception("MLProducer") << "Unsupported ONNX model " << modelPath
+                                           << ": expected 1 (pf_features) or 2 (pf_features, edge_index) inputs, got "
+                                           << nInputs;
+    knnInModel_ = (nInputs == 1);
+    edm::LogInfo("MLProducer") << "Loaded " << modelPath << " - "
+                               << (knnInModel_ ? "k-NN built inside the model (1 input)"
+                                               : "legacy model, k-NN built in C++ (2 inputs)");
 }
 
 // ── feature extraction ────────────────────────────────────────────────────────
@@ -248,29 +270,35 @@ void MLProducer::produce(
 
     float var1 = -1.f, var2 = -1.f;
     const float htCorrected = (htH.isValid()) ? *htH : 0.f;
-    if (particles.isValid() && !particles->empty() && htCorrected >= htMin_) {
-        int nKeep = std::min(static_cast<int>(particles->size()), nParticlesMax_);
-
-        std::vector<float>   features  = extractFeatures(*particles, nKeep);
-        std::vector<int64_t> edgeIndex = buildKNNGraph(*particles, nKeep, k_);
-        int nEdges = static_cast<int>(edgeIndex.size()) / 2;
-
+    const int nKeep = particles.isValid()
+        ? std::min(static_cast<int>(particles->size()), nParticlesMax_) : 0;
+    // The in-model k-NN (TopK over the other particles) needs at least k+1 particles
+    const int nMin = knnInModel_ ? k_ + 1 : 1;
+    if (nKeep >= nMin && htCorrected >= htMin_) {
+        std::vector<float> features = extractFeatures(*particles, nKeep);
         std::array<int64_t, 2> featShape = {{static_cast<int64_t>(nKeep), 16}};
-        std::array<int64_t, 2> edgeShape = {{2, static_cast<int64_t>(nEdges)}};
 
         std::vector<Ort::Value> inputTensors;
         inputTensors.push_back(Ort::Value::CreateTensor<float>(
             memInfo_, features.data(), features.size(),
             featShape.data(), featShape.size()));
-        inputTensors.push_back(Ort::Value::CreateTensor<int64_t>(
-            memInfo_, edgeIndex.data(), edgeIndex.size(),
-            edgeShape.data(), edgeShape.size()));
+
+        // legacy models only: graph built here (kept alive until Run returns)
+        std::vector<int64_t>   edgeIndex;
+        std::array<int64_t, 2> edgeShape = {{2, 0}};
+        if (!knnInModel_) {
+            edgeIndex = buildKNNGraph(*particles, nKeep, k_);
+            edgeShape[1] = static_cast<int64_t>(edgeIndex.size()) / 2;
+            inputTensors.push_back(Ort::Value::CreateTensor<int64_t>(
+                memInfo_, edgeIndex.data(), edgeIndex.size(),
+                edgeShape.data(), edgeShape.size()));
+        }
 
         const char* inputNames[]  = {"pf_features", "edge_index"};
         const char* outputNames[] = {"scores"};
         auto outputTensors = session_->Run(
             Ort::RunOptions{nullptr},
-            inputNames,  inputTensors.data(),  2,
+            inputNames,  inputTensors.data(),  inputTensors.size(),
             outputNames, 1);
 
         const float* scores = outputTensors[0].GetTensorData<float>();
